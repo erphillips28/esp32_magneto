@@ -1,6 +1,7 @@
+#include <MLX90393.h>
+
 //#include <Wire.h>
 //#include <Arduino.h>
-#include <MLX90393.h>
 
 // prints Bx By Bz (in uT) and temperature (C) to serial console after receiving a character
 
