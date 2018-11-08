@@ -1,6 +1,5 @@
 /*
     This sketch shows the Ethernet event usage
-
 */
 
 #include <ETH.h>
@@ -195,8 +194,9 @@ void loop()
               case '1':
                 break;
               case '2':
-                serverClients[i].print(measurement(&client));
-               //measurement(&client);
+                Serial.println("Hi Daniel");
+                //serverClients[i].print(measurement(&client));
+                measurement(&serverClients[i]);
                 break;
             }
         }
