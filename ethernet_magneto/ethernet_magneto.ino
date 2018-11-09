@@ -5,17 +5,14 @@
 #include <ETH.h>
 #include <MLX90393.h>
 
-
-MLX90393 mlx1;
-MLX90393 mlx2;
-
+#define N_Mag 4
+MLX90393 mlx[N_Mag];
 
 //Network related
 static bool eth_connected = false;
 IPAddress ip(10, 0, 0, 40);
 IPAddress gate(10, 0, 0, 1);
 IPAddress mask(255, 255, 255, 0);
-IPAddress dns(10, 0, 0, 1);
 
 //Server related
 #define MAX_SRV_CLIENTS 1
@@ -85,7 +82,7 @@ void setup()
 
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
-  ETH.config(ip,gate,mask,dns);
+  ETH.config(ip,gate,mask,gate);
 
   server.begin();
   server.setNoDelay(true);
@@ -95,19 +92,13 @@ void setup()
   Wire.begin();
 
   delay(1000);
-  uint8_t status = mlx1.begin(0, 0);
-  Serial.println(status);
-  uint8_t status2 = mlx2.begin(1, 0);
-  Serial.println(status2);
-  Serial.println( mlx1.begin(0, 0));
-  Serial.println(mlx2.begin(1, 0));
-  delay(1000);
-  Serial.println( mlx1.begin(0, 0));
-  Serial.println(mlx2.begin(1, 0));
-  delay(1000);
-  Serial.println( mlx1.begin(0, 0));
-  Serial.println(mlx2.begin(1, 0));
-  //uint8_t status = mlx.begin();
+  //uint8_t status;
+  for(uint8_t j = 0; j < 3; j++){
+    for(uint8_t i = 0; i < N_Mag; i++){
+      Serial.println(mlx[i].begin(i/2, i%2));
+      delay(500);
+    }
+  }
   
   Serial.println("setup done");
 }
@@ -119,8 +110,8 @@ void measurement(WiFiClient *client)
   Serial.println("hello");
   //if (Serial.available()){
   //  Serial.read();
-    mlx1.readData(data1);
-    mlx2.readData(data2);
+    mlx[0].readData(data1);
+    mlx[2].readData(data2);
     client->println("Magnetometer 1 Readings:");
     client->print(data1.x);
     client->print(" ");
