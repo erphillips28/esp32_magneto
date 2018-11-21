@@ -103,13 +103,25 @@ void setup()
   Serial.println("setup done");
 }
 
-void measurement(WiFiClient *client)
+void measurement(WiFiClient *client, MLX90393 mlx[N_Mag])
 { 
-  MLX90393::txyz data1;
-  MLX90393::txyz data2;
+  
+  //MLX90393::txyz data1;
+  //MLX90393::txyz data2;
   Serial.println("hello");
   //if (Serial.available()){
   //  Serial.read();
+    for (int i=0; i<N_Mag; i++){
+      MLX90393::txyz data[i];
+      mlx[i].readData(data[i]);
+      delay(500);
+    }
+    client->println("Magnetometer Readings:");
+    client->print(data[i].x + " ");
+    client->print(data[i].y + " ");
+    client->print(data[i].z + " ");
+    client->println(data[i].t + " ");
+    /*
     mlx[0].readData(data1);
     mlx[2].readData(data2);
     client->println("Magnetometer 1 Readings:");
@@ -128,7 +140,7 @@ void measurement(WiFiClient *client)
     client->print(data2.z);
     client->print(" ");
     client->println(data2.t); 
-    
+    */
    /* if (debug) {
       Serial.println("Magnetometer 1 Readings:");
       Serial.print(data1.x);
@@ -187,7 +199,7 @@ void loop()
               case '2':
                 Serial.println("Hi Daniel");
                 //serverClients[i].print(measurement(&client));
-                measurement(&serverClients[i]);
+                measurement(&serverClients[i], );
                 break;
             }
         }
