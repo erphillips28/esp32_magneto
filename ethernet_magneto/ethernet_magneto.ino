@@ -103,24 +103,25 @@ void setup()
   Serial.println("setup done");
 }
 
-void measurement(WiFiClient *client, MLX90393 mlx[N_Mag])
-{ 
-  
+void measurement(WiFiClient *client, MLX90393 *mlx)
+{   
   //MLX90393::txyz data1;
   //MLX90393::txyz data2;
-  Serial.println("hello");
+  Serial.println("what up dawg!! mike wuz here!!");
   //if (Serial.available()){
   //  Serial.read();
-    for (int i=0; i<N_Mag; i++){
-      MLX90393::txyz data[i];
-      mlx[i].readData(data[i]);
-      delay(500);
-    }
-    client->println("Magnetometer Readings:");
-    client->print(data[i].x + " ");
-    client->print(data[i].y + " ");
-    client->print(data[i].z + " ");
-    client->println(data[i].t + " ");
+  // input_var = Serial.input()
+  MLX90393::txyz data;
+  mlx->readData(data);
+  delay(500);
+  client->println("Magnetometer Readings:");
+  client->print(data.x);
+  client->print(" ");
+  client->print(data.y);
+  client->print(" ");
+  client->print(data.z);
+  client->print(" ");
+  client->println(data.t);
     /*
     mlx[0].readData(data1);
     mlx[2].readData(data2);
@@ -172,7 +173,7 @@ void loop()
       for(i = 0; i < MAX_SRV_CLIENTS; i++){
         //find free/disconnected spot
         if (!serverClients[i] || !serverClients[i].connected()){
-          if(serverClients[i]) serverClients[i].stop();
+          if (serverClients[i]) serverClients[i].stop();
           serverClients[i] = server.available();
           if (!serverClients[i]) Serial.println("available broken");
           Serial.print("New client: ");
@@ -190,16 +191,18 @@ void loop()
     //check clients for data
     for(i = 0; i < MAX_SRV_CLIENTS; i++){
       if (serverClients[i] && serverClients[i].connected()){
-        if(serverClients[i].available()){
+        if (serverClients[i].available()){
           char input = serverClients[i].read();
 
           switch(input) {
-              case '1':
+              case '0':
+                Serial.println("Hi Daniel");
+                measurement(&serverClients[i], &mlx[0]);
                 break;
               case '2':
                 Serial.println("Hi Daniel");
                 //serverClients[i].print(measurement(&client));
-                measurement(&serverClients[i], );
+                measurement(&serverClients[i], &mlx[2]);
                 break;
             }
         }
