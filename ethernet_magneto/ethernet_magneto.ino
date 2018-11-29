@@ -103,14 +103,9 @@ void setup()
   Serial.println("setup done");
 }
 
+// function to record measurements from a magnetometer
 void measurement(WiFiClient *client, MLX90393 *mlx)
 {   
-  //MLX90393::txyz data1;
-  //MLX90393::txyz data2;
-  Serial.println("what up dawg!! mike wuz here!!");
-  //if (Serial.available()){
-  //  Serial.read();
-  // input_var = Serial.input()
   MLX90393::txyz data;
   mlx->readData(data);
   delay(500);
@@ -122,44 +117,6 @@ void measurement(WiFiClient *client, MLX90393 *mlx)
   client->print(data.z);
   client->print(" ");
   client->println(data.t);
-    /*
-    mlx[0].readData(data1);
-    mlx[2].readData(data2);
-    client->println("Magnetometer 1 Readings:");
-    client->print(data1.x);
-    client->print(" ");
-    client->print(data1.y);
-    client->print(" ");
-    client->print(data1.z);
-    client->print(" ");
-    client->println(data1.t);
-    client->println("Magnetometer 2 Readings:");
-    client->print(data2.x);
-    client->print(" ");
-    client->print(data2.y);
-    client->print(" ");
-    client->print(data2.z);
-    client->print(" ");
-    client->println(data2.t); 
-    */
-   /* if (debug) {
-      Serial.println("Magnetometer 1 Readings:");
-      Serial.print(data1.x);
-      Serial.print(" ");
-      Serial.print(data1.y);
-      Serial.print(" ");
-      Serial.print(data1.z);
-      Serial.print(" ");
-      Serial.println(data1.t);
-      Serial.println("Magnetometer 2 Readings:");
-      Serial.print(data2.x);
-      Serial.print(" ");
-      Serial.print(data2.y);
-      Serial.print(" ");
-      Serial.print(data2.z);
-      Serial.print(" ");
-      Serial.println(data2.t); 
-      }*/
   delay(3000);
 }
 
@@ -196,13 +153,16 @@ void loop()
 
           switch(input) {
               case '0':
-                Serial.println("Hi Daniel");
                 measurement(&serverClients[i], &mlx[0]);
                 break;
+              case '1':
+                measurement(&serverClients[i], &mlx[1]);
+                break;
               case '2':
-                Serial.println("Hi Daniel");
-                //serverClients[i].print(measurement(&client));
                 measurement(&serverClients[i], &mlx[2]);
+                break;
+              case '3':
+                measurement(&serverClients[i], &mlx[3]);
                 break;
             }
         }
