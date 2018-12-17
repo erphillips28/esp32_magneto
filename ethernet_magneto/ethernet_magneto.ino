@@ -12,8 +12,7 @@ MLX90393 mlx[N_Mag];
 
 //Define network settings
 static bool eth_connected = false;
-//IPAddress ip(10, 0, 0, 40);
-IPAddress ip(192, 168, 0, 10);
+IPAddress ip(10, 0, 0, 40);
 IPAddress gate(10, 0, 0, 1);
 IPAddress mask(255, 255, 255, 0);
 
@@ -98,7 +97,8 @@ void handle_connection()
         Serial.println(serverClients[i].remoteIP());
         serverClients[i].print("You are connection ");
         serverClients[i].print(i);serverClients[i].print(" to ");
-        serverClients[i].print(ETH.getHostname());
+        serverClients[i].println(ETH.getHostname());
+        serverClients[i].print(">");
         //flush input buffer on connection
         while (serverClients[i].available()) serverClients[i].read();
         break;
@@ -118,19 +118,17 @@ void read_connection()
   for(i = 0; i < MAX_SRV_CLIENTS; i++){
     if (serverClients[i] && serverClients[i].connected()){
       if (serverClients[i].available()){
-        char input[charLim];
+        char input[charLim+2];
         uint8_t nRx = 0;
         bool incomplete = true;
-        char rc;
         while (serverClients[i].available()){
-          rc = serverClients[i].read();
-          if (rc == terminator) {
-            input[nRx] = '\0';
-            parse_command(i, input);
+          input[nRx] = serverClients[i].read();
+          if (input[nRx] == terminator) {
+            input[nRx+2] = '\0';
+            parse_command(&serverClients[i], input);
             incomplete = false;
             break;
           } else if (nRx < charLim) {
-            input[nRx] = rc;
             nRx ++;
           }
         }
@@ -144,37 +142,50 @@ void read_connection()
 }
 
 // funtion to interpret received command
-void parse_command(int i, char *input)
+void parse_command(WiFiClient *client, char *input)
 {
   Serial.print("Received command: ");
   Serial.println(input);
+  client->print(input);
   switch(input[0]) {
     // GET option, various mlx configurations
     case 'G':
-      GetConfig(&serverClients[i], input);
+      GetConfig(client, input);
       break;
     // READ option, <RN>, return magnetometer N value
     case 'R':
-      measurement(&serverClients[i], input[1]-'0'); // expect a uint8_t
+      measurement(client, input[1]-'0'); // expect a uint8_t
       break;
     // SET option, various mlx configurations
     case 'S':
-      SetConfig(&serverClients[i], input);
+      SetConfig(client, input);
       break;
     // TEST option, <T> return 1
     case 'T':
-      serverClients[i].println(1);
+      client->println(1);
       break;
     default:
-      serverClients[i].print("ERROR: Invalid command: ");
-      serverClients[i].println(input);
+      client->println("ERROR: Invalid command");
+      break;
   }
+  client->print(">");
+}
+
+// function to test for valid magID
+uint8_t TestMagID(WiFiClient *client, uint8_t magID)
+{
+  if (magID>N_Mag-1) {
+    client->println("ERROR: Invalid magID");
+    return 255;
+  }
+  return 0;
 }
 
 // function to parse get commands and format replies
 void GetConfig(WiFiClient *client, char *input)
 {
   uint8_t magID = input[2]-'0';
+  if (TestMagID(client, magID)) return;
   switch(input[1]) {
     // GET GAIN option, <GGN>, get magnetometer N gain
     case 'G':
@@ -193,8 +204,8 @@ void GetConfig(WiFiClient *client, char *input)
       client->println(res_z);
       break;
     default:
-      client->print("ERROR: Invalid GET command: ");
-      client->println(input);
+      client->println("ERROR: Invalid GET command");
+      break;
   }
 }
 
@@ -202,6 +213,7 @@ void GetConfig(WiFiClient *client, char *input)
 void SetConfig(WiFiClient *client, char *input)
 {
   uint8_t magID = input[2]-'0';
+  if (TestMagID(client, magID)) return;
   switch(input[1]) {
     // SET GAIN option, <GGN Y>, set magnetometer N gain to value Y
     case 'G':
@@ -212,19 +224,17 @@ void SetConfig(WiFiClient *client, char *input)
       client->println(mlx[magID].setResolution(input[4]-'0',input[5]-'0',input[6]-'0'));
       break;
     default:
-      client->print("ERROR: Invalid SET command: ");
-      client->println(input);
+      client->println("ERROR: Invalid SET command");
+      break;
   }
 }
 
 // function to record measurements from a magnetometer
 void measurement(WiFiClient *client, uint8_t magID)
-{   
+{
+  if (TestMagID(client, magID)) return;
   MLX90393::txyz data;
   mlx[magID].readData(data);
-  client->print("Magnetometer");
-  client->print(magID);
-  client->print(": ");
   client->print(data.x);
   client->print(" ");
   client->print(data.y);
