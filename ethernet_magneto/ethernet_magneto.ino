@@ -1,23 +1,28 @@
 /*
-    This sketch shows the Ethernet event usage
+    This sketch combines a hardware ethernet connection
+      with I2C MLX90393 magnetometer communication.
 */
 
 #include <ETH.h>
 #include <MLX90393.h>
 
+//Define magnetometer interfaces
 #define N_Mag 4
 MLX90393 mlx[N_Mag];
 
-//Network related
+//Define network settings
 static bool eth_connected = false;
-IPAddress ip(10, 0, 0, 40);
+//IPAddress ip(10, 0, 0, 40);
+IPAddress ip(192, 168, 0, 10);
 IPAddress gate(10, 0, 0, 1);
 IPAddress mask(255, 255, 255, 0);
 
-//Server related
-#define MAX_SRV_CLIENTS 1
+//Define telnet server parameters
+#define MAX_SRV_CLIENTS 4
 WiFiServer server(23);
 WiFiClient serverClients[MAX_SRV_CLIENTS];
+const byte charLim = 32;
+const char terminator = '\n';
 
 void WiFiEvent(WiFiEvent_t event)
 {
@@ -25,7 +30,7 @@ void WiFiEvent(WiFiEvent_t event)
     case SYSTEM_EVENT_ETH_START:
       Serial.println("ETH Started");
       //set eth hostname here
-      ETH.setHostname("esp32-ethernet");
+      ETH.setHostname("arduino1");
       break;
     case SYSTEM_EVENT_ETH_CONNECTED:
       Serial.println("ETH Connected");
@@ -35,9 +40,7 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.print(ETH.macAddress());
       Serial.print(", IPv4: ");
       Serial.print(ETH.localIP());
-      if (ETH.fullDuplex()) {
-        Serial.print(", FULL_DUPLEX");
-      }
+      if (ETH.fullDuplex()) Serial.print(", FULL_DUPLEX");
       Serial.print(", ");
       Serial.print(ETH.linkSpeed());
       Serial.println("Mbps");
@@ -56,26 +59,6 @@ void WiFiEvent(WiFiEvent_t event)
   }
 }
 
-void testClient(const char * host, uint16_t port)
-{
-  Serial.print("\nconnecting to ");
-  Serial.println(host);
-
-  WiFiClient client;
-  if (!client.connect(host, port)) {
-    Serial.println("connection failed");
-    return;
-  }
-  client.printf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host);
-  while (client.connected() && !client.available());
-  while (client.available()) {
-    Serial.write(client.read());
-  }
-
-  Serial.println("closing connection\n");
-  client.stop();
-}
-
 void setup()
 {
   Serial.begin(115200);
@@ -83,33 +66,165 @@ void setup()
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
   ETH.config(ip,gate,mask,gate);
-
   server.begin();
   server.setNoDelay(true);
-
-  Serial.println("hello");
+  Serial.println("network and server setup initialized");
   
   Wire.begin();
-
   delay(1000);
   //uint8_t status;
-  for(uint8_t j = 0; j < 3; j++){
+  for(uint8_t j = 0; j < 2; j++){
     for(uint8_t i = 0; i < N_Mag; i++){
-      Serial.println(mlx[i].begin(i/2, i%2));
+      Serial.println(mlx[i].begin(i/2, i%2)); // 255 return is BAD!!!
       delay(500);
     }
   }
-  
   Serial.println("setup done");
 }
 
+// function to handle new connections
+void handle_connection()
+{
+  uint8_t i;
+  if (server.hasClient()){
+    for(i = 0; i < MAX_SRV_CLIENTS; i++){
+      //find free/disconnected spot
+      if (!serverClients[i] || !serverClients[i].connected()){
+        if (serverClients[i]) serverClients[i].stop();
+        serverClients[i] = server.available();
+        if (!serverClients[i]) Serial.println("available broken");
+        Serial.print("New client: ");
+        Serial.print(i); Serial.print(' ');
+        Serial.println(serverClients[i].remoteIP());
+        serverClients[i].print("You are connection ");
+        serverClients[i].print(i);serverClients[i].print(" to ");
+        serverClients[i].print(ETH.getHostname());
+        //flush input buffer on connection
+        while (serverClients[i].available()) serverClients[i].read();
+        break;
+      }
+    }
+    if (i >= MAX_SRV_CLIENTS) {
+      //no free/disconnected spot so reject
+      server.available().stop();
+    }
+  }
+}
+
+// function to read commands from controls
+void read_connection()
+{
+  uint8_t i;
+  for(i = 0; i < MAX_SRV_CLIENTS; i++){
+    if (serverClients[i] && serverClients[i].connected()){
+      if (serverClients[i].available()){
+        char input[charLim];
+        uint8_t nRx = 0;
+        bool incomplete = true;
+        char rc;
+        while (serverClients[i].available()){
+          rc = serverClients[i].read();
+          if (rc == terminator) {
+            input[nRx] = '\0';
+            parse_command(i, input);
+            incomplete = false;
+            break;
+          } else if (nRx < charLim) {
+            input[nRx] = rc;
+            nRx ++;
+          }
+        }
+        if (incomplete) serverClients[i].println("ERROR: Incomplete transmission");
+      }
+    }
+    else {
+      if (serverClients[i]) serverClients[i].stop();
+    }
+  }
+}
+
+// funtion to interpret received command
+void parse_command(int i, char *input)
+{
+  Serial.print("Received command: ");
+  Serial.println(input);
+  switch(input[0]) {
+    // GET option, various mlx configurations
+    case 'G':
+      GetConfig(&serverClients[i], input);
+      break;
+    // READ option, <RN>, return magnetometer N value
+    case 'R':
+      measurement(&serverClients[i], input[1]-'0'); // expect a uint8_t
+      break;
+    // SET option, various mlx configurations
+    case 'S':
+      SetConfig(&serverClients[i], input);
+      break;
+    // TEST option, <T> return 1
+    case 'T':
+      serverClients[i].println(1);
+      break;
+    default:
+      serverClients[i].print("ERROR: Invalid command: ");
+      serverClients[i].println(input);
+  }
+}
+
+// function to parse get commands and format replies
+void GetConfig(WiFiClient *client, char *input)
+{
+  uint8_t magID = input[2]-'0';
+  switch(input[1]) {
+    // GET GAIN option, <GGN>, get magnetometer N gain
+    case 'G':
+      uint8_t gain;
+      mlx[magID].getGainSel(gain);
+      client->println(gain);
+      break;
+    // GET RESOLUTION option, <GRN>, get magnetometer N resolution for 3 axes
+    case 'R':
+      uint8_t res_x, res_y, res_z;
+      mlx[magID].getResolution(res_x, res_y, res_z);
+      client->print(res_x);
+      client->print(" ");
+      client->print(res_y);
+      client->print(" ");
+      client->println(res_z);
+      break;
+    default:
+      client->print("ERROR: Invalid GET command: ");
+      client->println(input);
+  }
+}
+
+// function to parse set commands and format replies
+void SetConfig(WiFiClient *client, char *input)
+{
+  uint8_t magID = input[2]-'0';
+  switch(input[1]) {
+    // SET GAIN option, <GGN Y>, set magnetometer N gain to value Y
+    case 'G':
+      client->println(mlx[magID].setGainSel(input[4]-'0'));
+      break;
+    // SET RESOLUTION option, <SRN XYZ>, set magnetometer N resolution to XYZ value for three axes
+    case 'R':
+      client->println(mlx[magID].setResolution(input[4]-'0',input[5]-'0',input[6]-'0'));
+      break;
+    default:
+      client->print("ERROR: Invalid SET command: ");
+      client->println(input);
+  }
+}
+
 // function to record measurements from a magnetometer
-void measurement(WiFiClient *client, MLX90393 *mlx)
+void measurement(WiFiClient *client, uint8_t magID)
 {   
   MLX90393::txyz data;
-  mlx->readData(data);
-  delay(500);
-  client->println("Magnetometer Readings:");
+  mlx[magID].readData(data);
+  client->print("Magnetometer");
+  client->print(magID);
+  client->print(": ");
   client->print(data.x);
   client->print(" ");
   client->print(data.y);
@@ -117,66 +232,19 @@ void measurement(WiFiClient *client, MLX90393 *mlx)
   client->print(data.z);
   client->print(" ");
   client->println(data.t);
-  delay(3000);
 }
 
 void loop()
 {
-  uint8_t i;
   if (eth_connected) {
     //check if there are any new clients
-    WiFiClient client = server.available();
-    if (server.hasClient()){
-      for(i = 0; i < MAX_SRV_CLIENTS; i++){
-        //find free/disconnected spot
-        if (!serverClients[i] || !serverClients[i].connected()){
-          if (serverClients[i]) serverClients[i].stop();
-          serverClients[i] = server.available();
-          if (!serverClients[i]) Serial.println("available broken");
-          Serial.print("New client: ");
-          Serial.print(i); Serial.print(' ');
-          Serial.println(serverClients[i].remoteIP());
-          serverClients[i].println("Hello client!");
-          break;
-        }
-      }
-      if (i >= MAX_SRV_CLIENTS) {
-        //no free/disconnected spot so reject
-        server.available().stop();
-      }
-    }
+    handle_connection();
     //check clients for data
-    for(i = 0; i < MAX_SRV_CLIENTS; i++){
-      if (serverClients[i] && serverClients[i].connected()){
-        if (serverClients[i].available()){
-          char input = serverClients[i].read();
-
-          switch(input) {
-              case '0':
-                measurement(&serverClients[i], &mlx[0]);
-                break;
-              case '1':
-                measurement(&serverClients[i], &mlx[1]);
-                break;
-              case '2':
-                measurement(&serverClients[i], &mlx[2]);
-                break;
-              case '3':
-                measurement(&serverClients[i], &mlx[3]);
-                break;
-            }
-        }
-      }
-      else {
-        if (serverClients[i]) {
-          serverClients[i].stop();
-        }
-      }
-    }
+    read_connection();
   } else {
     Serial.println("ETH not connected!");
     delay(100);
-    for(i = 0; i < MAX_SRV_CLIENTS; i++) {
+    for(uint8_t i = 0; i < MAX_SRV_CLIENTS; i++) {
       if (serverClients[i]) serverClients[i].stop();
     }
   }
