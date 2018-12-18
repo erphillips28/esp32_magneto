@@ -197,11 +197,13 @@ void GetConfig(WiFiClient *client, char *input)
     case 'R':
       uint8_t res_x, res_y, res_z;
       mlx[magID].getResolution(res_x, res_y, res_z);
+      client->print("[");
       client->print(res_x);
-      client->print(" ");
+      client->print(",");
       client->print(res_y);
-      client->print(" ");
-      client->println(res_z);
+      client->print(",");
+      client->print(res_z);
+      client->println("]");
       break;
     default:
       client->println("ERROR: Invalid GET command");
@@ -235,13 +237,15 @@ void measurement(WiFiClient *client, uint8_t magID)
   if (TestMagID(client, magID)) return;
   MLX90393::txyz data;
   mlx[magID].readData(data);
+  client->print("[");
   client->print(data.x);
-  client->print(" ");
+  client->print(",");
   client->print(data.y);
-  client->print(" ");
+  client->print(",");
   client->print(data.z);
-  client->print(" ");
-  client->println(data.t);
+  client->print(",");
+  client->print(data.t);
+  client->println("]");
 }
 
 void loop()
