@@ -12,7 +12,7 @@ MLX90393 mlx[N_Mag];
 
 //Define network settings
 static bool eth_connected = false;
-IPAddress ip(10, 0, 0, 40);
+IPAddress ip(10, 0, 0, 48);
 IPAddress gate(10, 0, 0, 1);
 IPAddress mask(255, 255, 255, 0);
 
@@ -152,6 +152,9 @@ void parse_command(WiFiClient *client, char *input)
     case 'G':
       GetConfig(client, input);
       break;
+    case 'Q':
+      Reset(client);
+      break;
     // READ option, <RN>, return magnetometer N value
     case 'R':
       measurement(client, input[1]-'0'); // expect a uint8_t
@@ -211,6 +214,25 @@ void GetConfig(WiFiClient *client, char *input)
   }
 }
 
+// function to reset all connected MLX sensors
+void Reset(WiFiClient *client)
+{
+  uint8_t reply[4];
+  for(uint8_t j = 0; j < 2; j++){
+    for(uint8_t i = 0; i < N_Mag; i++){
+      reply[i] = mlx[i].begin(i/2, i%2);
+      Serial.println(reply[i]); // 255 return is BAD!!!
+      delay(500);
+    }
+  }
+  client->print("[");
+  for(uint8_t i = 0; i < N_Mag; i++){
+    client->print(reply[i]);
+    if(i < N_Mag-1) client->print(",");
+  }
+  client->println("]");
+}
+
 // function to parse set commands and format replies
 void SetConfig(WiFiClient *client, char *input)
 {
@@ -235,8 +257,13 @@ void SetConfig(WiFiClient *client, char *input)
 void measurement(WiFiClient *client, uint8_t magID)
 {
   if (TestMagID(client, magID)) return;
+  uint8_t status1 = mlx[magID].startMeasurement(15);
+  delay(mlx[magID].convDelayMillis());
+  MLX90393::txyzRaw raw_txyz;
   MLX90393::txyz data;
-  mlx[magID].readData(data);
+  uint8_t status2 = mlx[magID].readMeasurement(15, raw_txyz);
+  data = mlx[magID].convertRaw(raw_txyz);
+
   client->print("[");
   client->print(data.x);
   client->print(",");
@@ -245,6 +272,10 @@ void measurement(WiFiClient *client, uint8_t magID)
   client->print(data.z);
   client->print(",");
   client->print(data.t);
+  client->print(",");
+  client->print(status1);
+  client->print(",");
+  client->print(status2);
   client->println("]");
 }
 
